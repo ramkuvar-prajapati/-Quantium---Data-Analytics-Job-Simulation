@@ -1,0 +1,91 @@
+
+---
+title: "Quantium Virtual Internship - Task 1 Analysis"
+output:
+  pdf_document:
+    df_print: default
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Load Libraries
+```{r}
+library(data.table)
+library(ggplot2)
+library(readr)
+```
+
+# Load Data
+```{r}
+transactionData <- fread("QVI_transaction_data.csv")
+customerData <- fread("QVI_purchase_behaviour.csv")
+```
+
+# Data Cleaning and Transformation
+```{r}
+# Convert DATE
+transactionData[, DATE := as.Date(DATE, origin = "1899-12-30")]
+
+# Remove salsa products
+transactionData[, SALSA := grepl("salsa", tolower(PROD_NAME))]
+transactionData <- transactionData[SALSA == FALSE, ][, SALSA := NULL]
+
+# Parse pack size
+transactionData[, PACK_SIZE := parse_number(PROD_NAME)]
+
+# Create brand from first word in PROD_NAME
+transactionData[, BRAND := tstrsplit(PROD_NAME, " ")[[1]]]
+transactionData[BRAND == "RED", BRAND := "RRD"]
+transactionData[BRAND == "SNBTS", BRAND := "SUNBITES"]
+```
+
+# Outlier Detection
+```{r}
+# Filter extreme quantities
+transactionData[PROD_QTY > 100]
+transactionData <- transactionData[LYLTY_CARD_NBR != 226000]
+```
+
+# Merge with Customer Data
+```{r}
+data <- merge(transactionData, customerData, all.x = TRUE)
+```
+
+# Exploratory Data Analysis
+```{r}
+summary(data)
+```
+
+# Sales by LIFESTAGE and PREMIUM_CUSTOMER
+```{r}
+sales_summary <- data[, .(Total_Sales = sum(TOT_SALES)), by = .(LIFESTAGE, PREMIUM_CUSTOMER)]
+ggplot(sales_summary, aes(x=LIFESTAGE, y=Total_Sales, fill=PREMIUM_CUSTOMER)) +
+  geom_bar(stat="identity", position="dodge") + coord_flip() +
+  labs(title="Total Sales by Segment", x="Lifestage", y="Total Sales")
+```
+
+# Units Per Customer
+```{r}
+units_summary <- data[, .(Units=sum(PROD_QTY)), by=.(LYLTY_CARD_NBR, LIFESTAGE, PREMIUM_CUSTOMER)]
+avg_units <- units_summary[, .(Avg_Units = mean(Units)), by=.(LIFESTAGE, PREMIUM_CUSTOMER)]
+ggplot(avg_units, aes(x=LIFESTAGE, y=Avg_Units, fill=PREMIUM_CUSTOMER)) +
+  geom_bar(stat="identity", position="dodge") + coord_flip() +
+  labs(title="Avg Units per Customer", x="Lifestage", y="Units")
+```
+
+# Average Price per Unit
+```{r}
+unit_price <- data[, .(Unit_Price = sum(TOT_SALES)/sum(PROD_QTY)), by = .(LIFESTAGE, PREMIUM_CUSTOMER)]
+ggplot(unit_price, aes(x=LIFESTAGE, y=Unit_Price, fill=PREMIUM_CUSTOMER)) +
+  geom_bar(stat="identity", position="dodge") + coord_flip() +
+  labs(title="Avg Price per Unit by Segment", x="Lifestage", y="Unit Price")
+```
+
+# Export Merged Dataset
+```{r}
+fwrite(data, "QVI_data.csv")
+```
